@@ -1,8 +1,8 @@
 # OpenClaw-Mini (LangChain Reproduction)
 
-这是一个用 Python + LangChain 复现 `openclaw-mini` 架构的项目。
+这是一个用 Python + LangChain 来实现 `openclaw-mini` 架构的项目。
 
-## 当前能力（高保真版）
+## 当前能力
 
 ### 核心层
 - 双层 Agent Loop（outer follow-up + inner tool execution）
