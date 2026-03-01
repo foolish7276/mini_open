@@ -1,0 +1,2 @@
+[console_scripts]
+openclaw-mini-lc = openclaw_mini_lc.cli:main

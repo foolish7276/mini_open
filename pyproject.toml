@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openclaw-mini-langchain"
+version = "0.1.0"
+description = "LangChain reproduction of openclaw-mini architecture"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "langchain>=0.3.0",
+  "langchain-openai>=0.2.0",
+  "langchain-anthropic>=0.3.0",
+  "pydantic>=2.0.0",
+  "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.7.0",
+  "pytest>=8.0.0",
+]
+
+[project.scripts]
+openclaw-mini-lc = "openclaw_mini_lc.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
