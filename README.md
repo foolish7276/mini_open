@@ -64,19 +64,42 @@ openclaw-mini-lc "列出当前目录" --stream-events
 openclaw-mini-lc "你好" --provider openai --model gpt-4o-mini --base-url https://your-proxy/v1
 ```
 
-## 架构映射
+## 源项目模块对照
 
-- `src/openclaw_mini_lc/agent.py`：主循环、steering、子代理、事件发射
-- `src/openclaw_mini_lc/context.py`：token 预算、裁剪、compaction
-- `src/openclaw_mini_lc/session.py`：会话落盘与 compaction entry
-- `src/openclaw_mini_lc/tools.py`：工具定义与安全控制
-- `src/openclaw_mini_lc/queue.py`：session 串行 + global 并发上限
-- `src/openclaw_mini_lc/provider.py`：LangChain provider 适配
-- `src/openclaw_mini_lc/memory.py`：记忆存取与检索
-- `src/openclaw_mini_lc/events.py`：异步事件总线
+### 核心层（必读）
+
+| 源项目模块 | 源项目文件 | 当前 Python/LangChain 对应文件 | 说明 |
+|---|---|---|---|
+| Agent | `agent.ts` | `src/openclaw_mini_lc/agent.py` | 入口、事件发射、主调度 |
+| Agent Loop | `agent-loop.ts` | `src/openclaw_mini_lc/agent.py` | 双层循环（outer follow-up / inner tools+steering）合并在 `agent.py` |
+| EventStream | `agent-events.ts` | `src/openclaw_mini_lc/events.py` + `src/openclaw_mini_lc/types.py` | 事件总线实现 + 事件类型定义 |
+| Session | `session.ts` | `src/openclaw_mini_lc/session.py` | JSONL 持久化、message/compaction 记录 |
+| Context Loader | `context/loader.ts` | `src/openclaw_mini_lc/context.py` | bootstrap 文件加载 |
+| Pruning | `context/pruning.ts` | `src/openclaw_mini_lc/context.py` | token 预算驱动的历史裁剪 |
+| Compaction | `context/compaction.ts` | `src/openclaw_mini_lc/context.py` + `src/openclaw_mini_lc/provider.py` | 历史摘要压缩（使用同模型补全） |
+| Tools | `tools/*.ts` | `src/openclaw_mini_lc/tools.py` | 工具抽象 + 内置工具集合 |
+| Provider | `provider/*.ts` | `src/openclaw_mini_lc/provider.py` | 多模型适配（当前接 OpenAI/Anthropic） |
+
+### 扩展层（选读）
+
+| 源项目模块 | 源项目文件 | 当前 Python/LangChain 对应文件 | 说明 |
+|---|---|---|---|
+| Memory | `memory.ts` | `src/openclaw_mini_lc/memory.py` | 长期记忆、关键词检索 + 时间衰减 |
+| Skills | `skills.ts` | `src/openclaw_mini_lc/skills.py` | `SKILL.md` 文本匹配触发 |
+| Heartbeat | `heartbeat.ts` | `src/openclaw_mini_lc/heartbeat.py` | 按 session 触发节流 |
+
+### 工程层（可跳过）
+
+| 源项目模块 | 源项目文件 | 当前 Python/LangChain 对应文件 | 说明 |
+|---|---|---|---|
+| Session Key | `session-key.ts` | `src/openclaw_mini_lc/session.py` | `normalize_session_key()` 会话键规范化 |
+| Tool Policy | `tool-policy.ts` | `src/openclaw_mini_lc/tools.py` | `filter_tools_by_policy()` 实现 `allow/deny/none` |
+| Command Queue | `command-queue.ts` | `src/openclaw_mini_lc/queue.py` | session 串行 + global 并发限制 |
+| Tool Result Guard | `session-tool-result-guard.ts` | `src/openclaw_mini_lc/agent.py` | 每个 tool_call 都会写回 `ToolMessage`，避免缺失 tool_result |
+| Context Window Guard | `context-window-guard.ts` | `src/openclaw_mini_lc/context.py` + `src/openclaw_mini_lc/config.py` | token 预算与上下文上限控制 |
+| Sandbox Paths | `sandbox-paths.ts` | `src/openclaw_mini_lc/tools.py` | `_resolve_safe()` 路径安全检查 |
 
 ## 说明
 
 - 该版本已覆盖 openclaw-mini 的主要架构思想和运行机制。
 - 真正 token 级 LLM streaming 事件（provider 原生 chunk 逐 token 转发）在不同模型 SDK 上行为不一致；当前 `message_delta` 为文本块级事件，属于可用替代实现。
-

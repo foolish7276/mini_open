@@ -29,13 +29,15 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-async def _event_printer(agent: OpenClawMiniAgent) -> None:
+async def _event_printer(agent: OpenClawMiniAgent, state: dict[str, object]) -> None:
     async for event in agent.events.subscribe():
         et = event.type
         if et == "message_delta":
+            state["saw_delta"] = True
             print(event.payload.get("delta", ""), end="", flush=True)
             continue
         if et == "message_end":
+            state["last_message_text"] = str(event.payload.get("text", ""))
             print()
             continue
         # 非文本事件打印一行摘要
@@ -77,8 +79,20 @@ async def _main() -> None:
     agent = OpenClawMiniAgent(settings)
 
     printer_task: asyncio.Task[None] | None = None
+#      asyncio 是 Python 标准库里的“异步并发”框架（不是第三方包）。
+
+#   你这行：
+
+#   printer_task: asyncio.Task[None] | None = None
+
+#   意思是：
+
+#   - printer_task 变量类型是“一个异步任务”或 None
+#   - 初始先设为 None
+#   - 后面会用 asyncio.create_task(...) 启动后台任务（比如流式事件打印）然后赋值给它。
+    stream_state: dict[str, object] = {"saw_delta": False, "last_message_text": ""}
     if args.stream_events:
-        printer_task = asyncio.create_task(_event_printer(agent))
+        printer_task = asyncio.create_task(_event_printer(agent, stream_state))
 
     try:
         req = RunRequest(
@@ -87,16 +101,45 @@ async def _main() -> None:
             max_turns=args.max_turns,
             tool_policy=args.tool_policy,
         )
-        result = await agent.run(req)
-
+        # 防止模型网关长时间无响应时 CLI 看起来“卡住”。
+        run_timeout_seconds = int(os.getenv("RUN_TIMEOUT_SECONDS", "180"))
+        result = await asyncio.wait_for(agent.run(req), timeout=run_timeout_seconds)
+        # 这个if是看是不是流式输出，流式输出就输出用了什么工具，第几轮调用
         if not args.stream_events:
             text = result.final_text if result.final_text.strip() else "模型未返回可见文本。"
             print(text)
         else:
+            # 若由于订阅时序未拿到最后一条 message_end 文本，回退打印最终文本。
+            # 例如：看到工具事件和 run_id，但正文缺失。
+            last_message_text = str(stream_state.get("last_message_text", ""))
+            text = result.final_text if result.final_text.strip() else "模型未返回可见文本。"
+            if (not bool(stream_state.get("saw_delta", False))) or (text != last_message_text):
+                text = result.final_text if result.final_text.strip() else "模型未返回可见文本。"
+                print(text)
             print(f"\n\n[run_id] {result.run_id}")
             print(f"[session] {result.session_key}")
             print(f"[turns] {result.turns_used}")
             print(f"[tool_calls] {result.tool_calls}")
+    except TimeoutError:
+        print(
+            "运行超时。可重试并加 --stream-events 观察进度；"
+            "也可增大 RUN_TIMEOUT_SECONDS（默认 180）。",
+            file=sys.stderr,
+        )
+        raise SystemExit(3)
+    except RuntimeError as exc:
+        err = str(exc)
+        if "Connection error" in err:
+            print(
+                "模型连接失败（Connection error）。请检查：\n"
+                "1) MODEL_BASE_URL 是否可达\n"
+                "2) API Key 是否有效\n"
+                "3) 代理/DNS 是否正常\n"
+                "建议先运行：openclaw-mini-lc \"只回复ok\" --tool-policy none --max-turns 1 --stream-events",
+                file=sys.stderr,
+            )
+            raise SystemExit(4)
+        raise
     finally:
         if printer_task is not None:
             printer_task.cancel()

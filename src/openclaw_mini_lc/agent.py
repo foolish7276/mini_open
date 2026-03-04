@@ -1,4 +1,4 @@
-"""Agent 主流程（高密注释版）。
+"""Agent 主流程。
 
 这个文件是整个项目的核心，基本对齐 openclaw-mini 的运行骨架：
 1) 外层循环：处理 follow-up / steering 注入。
